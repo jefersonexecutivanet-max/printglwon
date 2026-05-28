@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 2. Printers collection rules
+    match /printers/{printerId} {
+      allow read: if true;
+      allow create: if incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 300
+        && incoming().ip is string && incoming().ip.size() >= 0 && incoming().ip.size() <= 45
+        && incoming().status is string && (incoming().status == 'online' || incoming().status == 'offline' || incoming().status == 'sleep_mode' || incoming().status == 'warning' || incoming().status == 'error' || incoming().status == 'instável' || incoming().status == 'instavel' || incoming().status == 'sem_resposta' || incoming().status == 'sem_ip' || incoming().status == 'ip_invalido' || incoming().status == 'local_usb')
+        && incoming().createdAt is string && incoming().createdAt.size() <= 40;
+      allow update: if incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 300
+        && incoming().ip is string && incoming().ip.size() >= 0 && incoming().ip.size() <= 45
+        && incoming().status is string && (incoming().status == 'online' || incoming().status == 'offline' || incoming().status == 'sleep_mode' || incoming().status == 'warning' || incoming().status == 'error' || incoming().status == 'instável' || incoming().status == 'instavel' || incoming().status == 'sem_resposta' || incoming().status == 'sem_ip' || incoming().status == 'ip_invalido' || incoming().status == 'local_usb')
+        && incoming().updatedAt is string && incoming().updatedAt.size() <= 40
+        && (!('createdAt' in existing()) || !('createdAt' in incoming()) || incoming().createdAt == existing().createdAt);
+      allow delete: if true;
+    }
+
+    // 3. Logs collection rules
+    match /logs/{logId} {
+      allow read: if true;
+      allow create: if incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().eventType is string && (incoming().eventType == 'status_change' || incoming().eventType == 'config_change' || incoming().eventType == 'incident' || incoming().eventType == 'recovery')
+        && incoming().message is string && incoming().message.size() <= 1500
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update, delete: if false; // Logs are immutable
+    }
+
+    match /printer_logs/{logId} {
+      allow read: if true;
+      allow create: if incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().eventType is string && (incoming().eventType == 'status_change' || incoming().eventType == 'config_change' || incoming().eventType == 'incident' || incoming().eventType == 'recovery')
+        && incoming().message is string && incoming().message.size() <= 1500
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update, delete: if false;
+    }
+
+    // 4. Alerts collection rules
+    match /alerts/{alertId} {
+      allow read: if true;
+      allow create: if incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().severity is string && (incoming().severity == 'info' || incoming().severity == 'warning' || incoming().severity == 'critical')
+        && incoming().status is string && (incoming().status == 'active' || incoming().status == 'resolved')
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update: if incoming().status is string && (incoming().status == 'active' || incoming().status == 'resolved')
+        && (incoming().status == 'resolved' ? incoming().resolvedAt is string && incoming().resolvedAt.size() <= 40 : true);
+      allow delete: if true;
+    }
+
+    // 5. USB inventory collection rules
+    match /inventory_usb/{usbId} {
+      allow read: if true;
+      allow create: if incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200
+        && incoming().model is string && incoming().model.size() > 0 && incoming().model.size() <= 200
+        && incoming().createdAt is string && incoming().createdAt.size() <= 40;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // 6. Printer counters collection rules
+    match /printer_counters/{counterId} {
+      allow read: if true;
+      allow create: if incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().totalPages is number
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update, delete: if false; // Counters are immutable historical snapshots
+    }
+
+    // 7. Users collection rules
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId)
+        && incoming().uid == userId
+        && incoming().email is string && incoming().email.size() <= 100
+        && incoming().createdAt is string && incoming().createdAt.size() <= 40;
+      allow update: if isOwner(userId)
+        && incoming().email == existing().email
+        && (!('createdAt' in existing()) || !('createdAt' in incoming()) || incoming().createdAt == existing().createdAt);
+      allow delete: if false; // Users can't delete administrative accounts on their own
+    }
+  }
+}

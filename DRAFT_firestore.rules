@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 2. Printers collection rules
+    match /printers/{printerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100
+        && incoming().ip is string && incoming().ip.size() >= 7 && incoming().ip.size() <= 45
+        && incoming().status is string && (incoming().status == 'online' || incoming().status == 'offline' || incoming().status == 'sleep_mode' || incoming().status == 'warning' || incoming().status == 'error' || incoming().status == 'instável' || incoming().status == 'sem_resposta')
+        && incoming().createdAt is string && incoming().createdAt.size() <= 40;
+      allow update: if isSignedIn()
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100
+        && incoming().ip is string && incoming().ip.size() >= 7 && incoming().ip.size() <= 45
+        && incoming().status is string && (incoming().status == 'online' || incoming().status == 'offline' || incoming().status == 'sleep_mode' || incoming().status == 'warning' || incoming().status == 'error' || incoming().status == 'instável' || incoming().status == 'sem_resposta')
+        && incoming().updatedAt is string && incoming().updatedAt.size() <= 40
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isSignedIn();
+    }
+
+    // 3. Logs collection rules
+    match /logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().eventType is string && (incoming().eventType == 'status_change' || incoming().eventType == 'config_change' || incoming().eventType == 'incident' || incoming().eventType == 'recovery')
+        && incoming().message is string && incoming().message.size() <= 1000
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update, delete: if false; // Logs are immutable
+    }
+
+    // 4. Alerts collection rules
+    match /alerts/{alertId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().severity is string && (incoming().severity == 'info' || incoming().severity == 'warning' || incoming().severity == 'critical')
+        && incoming().status is string && (incoming().status == 'active' || incoming().status == 'resolved')
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update: if isSignedIn()
+        && incoming().status is string && (incoming().status == 'active' || incoming().status == 'resolved')
+        && (incoming().status == 'resolved' ? incoming().resolvedAt is string && incoming().resolvedAt.size() <= 40 : true)
+        && incoming().timestamp == existing().timestamp;
+      allow delete: if isSignedIn();
+    }
+
+    // 5. Users collection rules
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId)
+        && incoming().uid == userId
+        && incoming().email is string && incoming().email.size() <= 100
+        && incoming().createdAt is string && incoming().createdAt.size() <= 40;
+      allow update: if isOwner(userId)
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if false; // Users can't delete administrative accounts on their own
+    }
+  }
+}

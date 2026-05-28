@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "printers": {
+      "title": "Printer",
+      "description": "Information about registered network printers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "hostname": { "type": "string" },
+        "ip": { "type": "string" },
+        "location": { "type": "string" },
+        "model": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["online", "offline", "instável", "sem_resposta"] },
+        "latency": { "type": "number" },
+        "lastChecked": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ip", "status"]
+    },
+    "logs": {
+      "title": "Event Log",
+      "description": "Log of printer monitoring events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "printerId": { "type": "string" },
+        "printerName": { "type": "string" },
+        "eventType": { "type": "string", "enum": ["status_change", "config_change", "incident", "recovery"] },
+        "message": { "type": "string" },
+        "previousStatus": { "type": "string" },
+        "currentStatus": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["printerId", "eventType", "message", "timestamp"]
+    },
+    "alerts": {
+      "title": "Alert",
+      "description": "Active custom alerts/incidents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "printerId": { "type": "string" },
+        "printerName": { "type": "string" },
+        "message": { "type": "string" },
+        "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+        "status": { "type": "string", "enum": ["active", "resolved"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "resolvedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["printerId", "message", "severity", "status", "timestamp"]
+    },
+    "users": {
+      "title": "User Profile",
+      "description": "Administrative user information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "printers": {
+      "schema": "printers",
+      "description": "Collection of network printers"
+    },
+    "logs": {
+      "schema": "logs",
+      "description": "System event history logs"
+    },
+    "alerts": {
+      "schema": "alerts",
+      "description": "Active system alerts and incidents"
+    },
+    "users": {
+      "schema": "users",
+      "description": "Admin user access data"
+    }
+  }
+}

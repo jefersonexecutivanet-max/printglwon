@@ -1,0 +1,6 @@
+{
+  "name": "PrintGlow Printer Telemetry",
+  "description": "Professional real-time network printer telemetry monitoring application with automated alarms and event auditing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
