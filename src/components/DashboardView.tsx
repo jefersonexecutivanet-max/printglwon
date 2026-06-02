@@ -107,7 +107,12 @@ export default function DashboardView({
       else stats.fax.erro++;
 
       // 4. Mensagem
-      const sMsg = (p.statusMensagem || "Pronto").toLowerCase();
+      const inferredMessage = p.statusMensagem && p.statusMensagem !== "Pronto"
+        ? p.statusMensagem
+        : (p.currentMessage && p.currentMessage !== "✅ Operacional" && p.currentMessage !== "🔴 Offline"
+            ? p.currentMessage.replace(/^[🚨⚠️]\s*/, "")
+            : "Pronto");
+      const sMsg = inferredMessage.toLowerCase();
       if (sMsg.includes("pronto")) stats.mensagem.pronto++;
       else if (sMsg.includes("espera") || sMsg.includes("sleep") || sMsg.includes("economia") || ["processando", "imprimindo", "impressao", "printing"].some((token) => sMsg.includes(token))) stats.mensagem.espera++;
       else if (["erro", "falha", "preso", "atolado", "aberta", "aberto", "sem papel", "vazio", "vazia", "unidade", "imagem", "baixo"].some(x => sMsg.includes(x))) stats.mensagem.alerta++;

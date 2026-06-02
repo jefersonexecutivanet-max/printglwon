@@ -910,7 +910,17 @@ export default function PrintersView({
                       </td>
 
                       <td className="py-3.5 px-4 animate-fade-in max-w-[150px] overflow-hidden truncate">
-                        {getCCStatusBadge(printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido" ? "Inativo" : (printer.statusMensagem || (printer.status === "offline" ? "Offline" : "Pronto")))}
+                        {getCCStatusBadge(
+                          printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido"
+                            ? "Inativo"
+                            : (
+                                printer.statusMensagem && printer.statusMensagem !== "Pronto"
+                                  ? printer.statusMensagem
+                                  : (printer.currentMessage && printer.currentMessage !== "✅ Operacional"
+                                      ? printer.currentMessage.replace(/^[🚨⚠️]\s*/, "")
+                                      : (printer.status === "offline" ? "Offline" : "Pronto"))
+                              )
+                        )}
                       </td>
 
                       {/* Response Latency Cell */}

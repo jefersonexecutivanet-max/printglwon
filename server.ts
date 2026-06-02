@@ -871,6 +871,17 @@ async function startServer() {
         if (scrapedCC.statusImpressora) ccStatuses.statusImpressora = scrapedCC.statusImpressora;
         if (scrapedCC.statusScanner) ccStatuses.statusScanner = scrapedCC.statusScanner;
         if (scrapedCC.statusFax) ccStatuses.statusFax = scrapedCC.statusFax;
+
+        if (scrapedCC.statusMensagem && !scrapedCC.statusImpressora && !scrapedCC.statusScanner && !scrapedCC.statusFax) {
+          const lowerScraped = scrapedCC.statusMensagem.toLowerCase();
+          if (lowerScraped.includes("scanner") || lowerScraped.includes("adf")) {
+            ccStatuses.statusScanner = scrapedCC.statusMensagem;
+          } else if (lowerScraped.includes("fax")) {
+            ccStatuses.statusFax = scrapedCC.statusMensagem;
+          } else {
+            ccStatuses.statusImpressora = scrapedCC.statusMensagem;
+          }
+        }
       }
     }
 
@@ -898,6 +909,14 @@ async function startServer() {
 
     if (chosen.severity !== "none" || (chosen.message && chosen.message !== "Pronto")) {
       ccStatuses.statusMensagem = chosen.message;
+      const lowerChosen = chosen.message.toLowerCase();
+      if (lowerChosen.includes("scanner") || lowerChosen.includes("adf")) {
+        ccStatuses.statusScanner = chosen.message;
+      } else if (lowerChosen.includes("fax")) {
+        ccStatuses.statusFax = chosen.message;
+      } else {
+        ccStatuses.statusImpressora = chosen.message;
+      }
     }
 
     // Log diagnostic audit details
