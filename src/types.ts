@@ -6,6 +6,7 @@ export interface Printer {
   location?: string;
   model?: string;
   notes?: string;
+  remoteUrl?: string;
   status: "online" | "offline" | "sleep_mode" | "warning" | "error" | "instável" | "instavel" | "sem_resposta" | "sem_ip" | "ip_invalido" | "local_usb";
   latency: number;
   lastChecked: string; // ISO string
@@ -26,6 +27,12 @@ export interface Printer {
   ultimaVerificacao?: string | null;
   responseTime?: number | null;
   mensagem?: string | null;
+  adminUsername?: string;
+  adminPassword?: string;
+  statusImpressora?: string;
+  statusScanner?: string;
+  statusFax?: string;
+  statusMensagem?: string;
 
   // SNMP Counters
   totalPages?: number;

@@ -86,5 +86,14 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt;
       allow delete: if false; // Users can't delete administrative accounts on their own
     }
+
+    // 6. Status history collection rules
+    match /status_history/{historyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update, delete: if false; // Status history is immutable
+    }
   }
 }

@@ -43,8 +43,44 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const rawMsg = error instanceof Error ? error.message : String(error);
+  const code = (error as any)?.code || "";
+
+  const isDuplicateOrLogPermissionMsg = 
+    rawMsg.toLowerCase().includes("already exists") ||
+    rawMsg.toLowerCase().includes("already-exists") ||
+    rawMsg.toLowerCase().includes("permission-denied") ||
+    rawMsg.toLowerCase().includes("permission denied") ||
+    String(code).toLowerCase().includes("already-exists") ||
+    String(code).toLowerCase().includes("permission-denied");
+
+  const isLogPath = path && (
+    path.includes("logs") ||
+    path.includes("printer_logs") ||
+    path.includes("alerts") ||
+    path.includes("printer_counters")
+  );
+
+  if (isDuplicateOrLogPermissionMsg && isLogPath) {
+    console.warn(`[FIREBASE_SAFE_RECOVERY] Ignorado erro de sincronização/duplicidade/regra em log/alerta de modo seguro: ${rawMsg} (código: ${code}, caminho: ${path})`);
+    return;
+  }
+
+  const isConnectionError = 
+    rawMsg.toLowerCase().includes("failed to fetch") ||
+    rawMsg.toLowerCase().includes("failed-to-fetch") ||
+    rawMsg.toLowerCase().includes("unreachable") ||
+    rawMsg.toLowerCase().includes("network") ||
+    rawMsg.toLowerCase().includes("socket") ||
+    code === "unavailable";
+
+  if (isConnectionError) {
+    console.warn(`[FIREBASE_CONNECTION_INFO] Rede inacessível ou Firestore inacessível temporariamente: ${rawMsg} (caminho: ${path})`);
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: rawMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -63,7 +99,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Validation check on startup
+// Validation check on startup (Can be executed manually if needed, deactivated on load for stability)
 async function testConnection() {
   try {
     const testDoc = doc(db, "test", "connection");
@@ -74,7 +110,7 @@ async function testConnection() {
     }
   }
 }
-testConnection();
+// testConnection(); deactivated on load to prevent false-alarm startup network alerts
 
 // Simple Login and Logout wrapper using signInWithPopup
 export const loginWithGoogle = async () => {

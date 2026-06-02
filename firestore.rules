@@ -92,6 +92,19 @@ service cloud.firestore {
       allow update, delete: if false; // Counters are immutable historical snapshots
     }
 
+    // 6b. Status history collection rules
+    match /status_history/{historyId} {
+      allow read: if true;
+      allow create: if incoming().printerId is string && incoming().printerId.size() <= 100
+        && incoming().timestamp is string && incoming().timestamp.size() <= 40;
+      allow update, delete: if false; // Status history is immutable
+    }
+
+    // Startup system test collection rule
+    match /test/{testId} {
+      allow read: if true;
+    }
+
     // 7. Users collection rules
     match /users/{userId} {
       allow read: if isSignedIn();

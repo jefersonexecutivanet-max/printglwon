@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   Plus, 
   Search, 
@@ -13,15 +13,15 @@ import {
   FileDown,
   Check,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  ExternalLink,
+  Key,
+  Eye,
+  EyeOff,
+  ShieldCheck
 } from "lucide-react";
 import { parseCSVText, parseExcelFile, ImportedPrinter, validateIPAddress, buildPrinterFromRow } from "../utils/spreadsheet";
 import { Printer } from "../types";
-
-const isLocalIpToken = (ipValue?: string) => {
-  const normalized = String(ipValue || "").trim().toUpperCase();
-  return normalized === "" || normalized === "SEMREDE" || normalized === "USB" || normalized === "LOCAL";
-};
 
 interface PrintersViewProps {
   printers: Printer[];
@@ -31,7 +31,51 @@ interface PrintersViewProps {
   onBulkImport: (printers: ImportedPrinter[]) => Promise<number>;
   triggerSingleScan: (printer: Printer) => Promise<void>;
   isScanningMap: { [key: string]: boolean };
+  initialActiveTab?: "com_ip" | "sem_ip";
 }
+
+const getCCStatusBadge = (statusVal?: string) => {
+  if (!statusVal) {
+    return <span className="text-slate-600 font-mono text-[10px]">—</span>;
+  }
+  const clean = statusVal.trim();
+  const cleanLower = clean.toLowerCase();
+  
+  let colorClass = "bg-slate-900 text-slate-400 border-slate-800";
+  if (["pronto", "sucesso", "ok"].some(x => cleanLower.includes(x))) {
+    colorClass = "bg-green-500/10 text-green-400 border-green-500/20";
+  } else if (["espera", "sleep", "economia", "eco", "poupar"].some(x => cleanLower.includes(x))) {
+    colorClass = "bg-slate-850 text-slate-300 border-slate-800";
+  } else if (["aquecendo", "processando"].some(x => cleanLower.includes(x))) {
+    colorClass = "bg-blue-500/10 text-blue-400 border-blue-500/20";
+  } else if (["baixo", "prox", "fim", "proxima", "manutencao"].some(x => cleanLower.includes(x))) {
+    colorClass = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+  } else if (["erro", "falha", "preso", "atolado", "aberta", "aberto", "sem papel", "vazio", "vazia"].some(x => cleanLower.includes(x))) {
+    colorClass = "bg-red-500/10 text-red-500 border-red-500/20";
+  } else if (["inativo"].some(x => cleanLower.includes(x))) {
+    colorClass = "bg-slate-950 text-slate-500 border-slate-900";
+  }
+
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded font-mono text-[10px] border tracking-wide whitespace-nowrap ${colorClass}`}>
+      {clean}
+    </span>
+  );
+};
+
+const formatLastChecked = (timeStr?: string | null) => {
+  if (!timeStr) return <span className="text-slate-600 font-mono">—</span>;
+  try {
+    const dt = new Date(timeStr);
+    return (
+      <span className="font-mono text-[10px] text-slate-400 whitespace-nowrap" title={dt.toLocaleString("pt-BR")}>
+        {dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      </span>
+    );
+  } catch {
+    return <span className="text-slate-400">{timeStr}</span>;
+  }
+};
 
 export default function PrintersView({
   printers,
@@ -41,11 +85,20 @@ export default function PrintersView({
   onBulkImport,
   triggerSingleScan,
   isScanningMap,
+  initialActiveTab,
 }: PrintersViewProps) {
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [activeListTab, setActiveListTab] = useState<"com_ip" | "sem_ip">(initialActiveTab || "com_ip");
+
+  // Sync state if initialActiveTab prop changes
+  useEffect(() => {
+    if (initialActiveTab) {
+      setActiveListTab(initialActiveTab);
+    }
+  }, [initialActiveTab]);
 
   // Multi-Form / Drawer states
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -60,6 +113,17 @@ export default function PrintersView({
   const [tombo, setTombo] = useState("");
   const [serial, setSerial] = useState("");
   const [ip, setIp] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
+  
+  // Command Center Auth state fields
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [testStatus, setTestStatus] = useState<{
+    isLoading: boolean;
+    success?: boolean;
+    message?: string;
+  } | null>(null);
 
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -103,6 +167,27 @@ export default function PrintersView({
     return matchesSearch && matchesStatus && matchesLoc;
   });
 
+  // Split list according to tab selected: Ativas (with configured IP address) vs Inventário (local USB / no IP)
+  const ativasPrinters = filteredPrinters.filter(
+    (p) => p.ip && p.ip.trim() !== "" && p.ip !== "0.0.0.0" && validateIPAddress(p.ip)
+  );
+  
+  const inventarioPrinters = filteredPrinters.filter(
+    (p) => 
+      !p.ip || 
+      p.ip.trim() === "" || 
+      p.ip === "0.0.0.0" || 
+      !validateIPAddress(p.ip) ||
+      p.status === "local_usb" || 
+      p.status === "sem_ip" || 
+      p.status === "ip_invalido"
+  );
+
+  const listToRender = 
+    activeListTab === "com_ip" 
+      ? ativasPrinters 
+      : inventarioPrinters;
+
   // Open Drawer cleanup
   const openAddDrawer = () => {
     setSetor("");
@@ -112,6 +197,11 @@ export default function PrintersView({
     setTombo("");
     setSerial("");
     setIp("");
+    setRemoteUrl("");
+    setAdminUsername("admin");
+    setAdminPassword("admin");
+    setShowPassword(false);
+    setTestStatus(null);
     setFormError(null);
     setIsAddOpen(true);
   };
@@ -125,7 +215,68 @@ export default function PrintersView({
     setTombo(printer.tombo || "");
     setSerial(printer.serial || "");
     setIp(printer.ip || "");
+    setRemoteUrl(printer.remoteUrl || "");
+    setAdminUsername(printer.adminUsername || "admin");
+    setAdminPassword(printer.adminPassword ? "********" : "admin");
+    setShowPassword(false);
+    setTestStatus(null);
     setFormError(null);
+  };
+
+  // Test printer command center authentication connectivity
+  const handleTestAccess = async () => {
+    if (!ip.trim()) {
+      setTestStatus({ isLoading: false, success: false, message: "O endereço IP é obrigatório para testar." });
+      return;
+    }
+    if (!adminUsername.trim() || !adminPassword.trim()) {
+      setTestStatus({ isLoading: false, success: false, message: "Usuário Admin e Senha Admin são obrigatórios." });
+      return;
+    }
+
+    setTestStatus({ isLoading: true });
+    try {
+      let passwordToTest = adminPassword;
+      // If editing and password has not been altered, use the encrypted value from the model. 
+      if (isEditOpen && adminPassword === "********") {
+        passwordToTest = isEditOpen.adminPassword || "admin";
+      } else {
+        // Encrypt the plain text password first
+        const encRes = await fetch("/api/encrypt-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: adminPassword })
+        });
+        if (encRes.ok) {
+          const encData = await encRes.json();
+          passwordToTest = encData.encrypted;
+        }
+      }
+
+      const res = await fetch("/api/test-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ip: ip.trim(),
+          id: isEditOpen?.id || "draft_test",
+          adminUsername: adminUsername.trim(),
+          adminPassword: passwordToTest
+        })
+      });
+
+      const data = await res.json();
+      setTestStatus({
+        isLoading: false,
+        success: data.success,
+        message: data.message
+      });
+    } catch (err: any) {
+      setTestStatus({
+        isLoading: false,
+        success: false,
+        message: "Falha de conexão com o servidor."
+      });
+    }
   };
 
   // Action Add Submission
@@ -138,30 +289,56 @@ export default function PrintersView({
       return;
     }
 
-    // IP validation if filled and not explicitly marked as local device
-    if (ip.trim()) {
-      const cleanIpMatch = ip.trim().replace(/\s+/g, "").replace(/\.\./g, ".");
-      if (!isLocalIpToken(cleanIpMatch) && !validateIPAddress(cleanIpMatch)) {
-        setFormError("O IP inserido possui formato IPv4 incorreto (ex: 192.168.1.50).");
-        return;
-      }
+    if (!adminUsername.trim() || !adminPassword.trim()) {
+      setFormError("Usuário Admin e Senhas Admin são obrigatórios para habilitar autenticação de Command Center.");
+      return;
+    }
+
+    // IP validation: If filled but NOT a valid IP and not an explicit local keyword, we treat it as Local/USB!
+    let finalTipo = tipo.trim();
+    let finalIp = ip.trim();
+    if (finalIp === "0.0.0.0") {
+      finalIp = "";
+    }
+    const ipUpper = finalIp.toUpperCase();
+    const isLocal = !finalIp || ipUpper === "SEMREDE" || ipUpper === "USB" || ipUpper === "LOCAL" || !validateIPAddress(finalIp);
+
+    if (isLocal) {
+      finalTipo = "LOCAL_USB";
     }
 
     setIsSaving(true);
     try {
+      // Securely encrypt the password on the server
+      let encryptedPassword = "";
+      const encRes = await fetch("/api/encrypt-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword })
+      });
+      if (encRes.ok) {
+        const encData = await encRes.json();
+        encryptedPassword = encData.encrypted;
+      } else {
+        throw new Error("Erro de criptografia de credenciais");
+      }
+
       await onAddPrinter({
         name: `${marca} ${modelo} - ${setor}`,
-        ip: ip.trim(),
+        ip: finalIp,
         setor: setor.trim(),
-        tipo: tipo.trim(),
+        tipo: finalTipo,
         marca: marca.trim(),
         modelo: modelo.trim(),
         tombo: tombo.trim(),
         serial: serial.trim(),
         location: setor.trim(),
         model: `${marca} ${modelo}`,
+        remoteUrl: remoteUrl.trim(),
+        adminUsername: adminUsername.trim(),
+        adminPassword: encryptedPassword,
         notes: [
-          tipo ? `Tipo: ${tipo}` : "",
+          finalTipo ? `Tipo: ${finalTipo}` : "",
           tombo ? `Tombo: ${tombo}` : "",
           serial ? `S/N: ${serial}` : ""
         ].filter(Boolean).join(" | "),
@@ -172,7 +349,7 @@ export default function PrintersView({
 
       setIsAddOpen(false);
     } catch (err: any) {
-      setFormError("Erro ao registrar a impressora no banco de dados.");
+      setFormError(err.message || "Erro ao registrar a impressora no banco de dados.");
     } finally {
       setIsSaving(false);
     }
@@ -189,37 +366,66 @@ export default function PrintersView({
       return;
     }
 
-    // IP validation if filled and not explicitly marked as local device
-    if (ip.trim()) {
-      const cleanIpMatch = ip.trim().replace(/\s+/g, "").replace(/\.\./g, ".");
-      if (!isLocalIpToken(cleanIpMatch) && !validateIPAddress(cleanIpMatch)) {
-        setFormError("O IP editado possui formato IPv4 incorreto (ex: 10.69.32.18).");
-        return;
-      }
+    if (!adminUsername.trim() || !adminPassword.trim()) {
+      setFormError("Usuário Admin e Senhas Admin são obrigatórios para habilitar autenticação de Command Center.");
+      return;
+    }
+
+    // IP validation
+    let finalTipo = tipo.trim();
+    let finalIp = ip.trim();
+    if (finalIp === "0.0.0.0") {
+      finalIp = "";
+    }
+    const ipUpper = finalIp.toUpperCase();
+    const isLocal = !finalIp || ipUpper === "SEMREDE" || ipUpper === "USB" || ipUpper === "LOCAL" || !validateIPAddress(finalIp);
+
+    if (isLocal) {
+      finalTipo = "LOCAL_USB";
     }
 
     setIsSaving(true);
     try {
+      let finalEncryptedPassword = isEditOpen.adminPassword || "";
+
+      // If the password was changed (user deleted asterisks mask)
+      if (adminPassword !== "********") {
+        const encRes = await fetch("/api/encrypt-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: adminPassword })
+        });
+        if (encRes.ok) {
+          const encData = await encRes.json();
+          finalEncryptedPassword = encData.encrypted;
+        } else {
+          throw new Error("Erro de criptografia de credenciais");
+        }
+      }
+
       await onEditPrinter(isEditOpen.id, {
         name: `${marca} ${modelo} - ${setor}`,
-        ip: ip.trim(),
+        ip: finalIp,
         setor: setor.trim(),
-        tipo: tipo.trim(),
+        tipo: finalTipo,
         marca: marca.trim(),
         modelo: modelo.trim(),
         tombo: tombo.trim(),
         serial: serial.trim(),
         location: setor.trim(),
         model: `${marca} ${modelo}`,
+        remoteUrl: remoteUrl.trim(),
+        adminUsername: adminUsername.trim(),
+        adminPassword: finalEncryptedPassword,
         notes: [
-          tipo ? `Tipo: ${tipo}` : "",
+          finalTipo ? `Tipo: ${finalTipo}` : "",
           tombo ? `Tombo: ${tombo}` : "",
           serial ? `S/N: ${serial}` : ""
         ].filter(Boolean).join(" | ")
       });
       setIsEditOpen(null);
-    } catch (err) {
-      setFormError("Falha na atualização do cadastro da impressora.");
+    } catch (err: any) {
+      setFormError(err.message || "Falha na atualização do cadastro da impressora.");
     } finally {
       setIsSaving(false);
     }
@@ -303,6 +509,8 @@ export default function PrintersView({
         tombo: field === "tombo" ? value : target.tombo,
         serial: field === "serial" ? value : target.serial,
         ip: field === "ip" ? value : target.ip,
+        usuarioadmin: field === "adminUsername" ? value : (target.adminUsername || "admin"),
+        senhaadmin: field === "adminPassword" ? value : (target.adminPassword || "admin"),
       };
 
       const rebuilt = buildPrinterFromRow(rowObj);
@@ -438,13 +646,10 @@ export default function PrintersView({
               className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-850 text-slate-300 text-xs focus:outline-none select-none cursor-pointer"
               id="select-filter-status"
             >
-              <option value="all">Todos os Status</option>
-              <option value="online">Online</option>
-              <option value="sleep_mode">Sleep Mode/Economia</option>
-              <option value="warning">Aviso / Warning</option>
-              <option value="error">Erro Crítico</option>
+              <option value="all">Sinalizadores (Todos)</option>
+              <option value="online">Online / Ativa</option>
+              <option value="local_usb">Inventariada (Local/USB)</option>
               <option value="offline">Offline / Inativa</option>
-              <option value="local_usb">Inventário Local (LOCAL_USB)</option>
             </select>
           </div>
 
@@ -468,14 +673,48 @@ export default function PrintersView({
         </div>
       </div>
 
-      {/* Interactive Database Datatable */}
+      {/* Interactive Database Datatable with Integrated Tabs like Print Audit */}
       <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl" id="table-card-container">
+        
+        {/* Dynamic Navigation Tabs */}
+        <div className="flex border-b border-slate-900 bg-slate-950/80 px-4" id="printers-list-tabs">
+          <button
+            onClick={() => setActiveListTab("com_ip")}
+            className={`cursor-pointer px-5 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition flex items-center gap-2 select-none ${
+              activeListTab === "com_ip"
+                ? "border-blue-500 text-blue-400 font-bold"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+            id="tab-btn-com-ip"
+          >
+            🟢 IMPRESSORAS ATIVAS COM IP
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${activeListTab === "com_ip" ? "text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20" : "text-slate-500 bg-slate-900"}`}>
+              {printers.filter(p => p.ip && p.ip.trim() !== "" && p.ip !== "0.0.0.0").length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveListTab("sem_ip")}
+            className={`cursor-pointer px-5 py-3.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition flex items-center gap-2 select-none ${
+              activeListTab === "sem_ip"
+                ? "border-amber-500 text-amber-400 font-bold"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+            id="tab-btn-sem-ip"
+          >
+            🔌 INVENTÁRIO
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${activeListTab === "sem_ip" ? "text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20" : "text-slate-500 bg-slate-900"}`}>
+              {printers.filter(p => !p.ip || p.ip.trim() === "" || p.ip === "0.0.0.0" || p.status === "local_usb" || p.status === "sem_ip" || p.status === "ip_invalido").length}
+            </span>
+          </button>
+        </div>
+
         <div className="overflow-x-auto min-h-[350px]">
-          {filteredPrinters.length === 0 ? (
+          {listToRender.length === 0 ? (
             <div className="py-24 text-center text-slate-500">
               <AlertCircle className="h-8 w-8 mx-auto text-slate-700 mb-2.5" />
-              <p className="text-sm font-semibold text-slate-400">Nenhum equipamento localizado</p>
-              <p className="text-slate-500 text-xs mt-1">Nenhum registro coincide com o filtro de pesquisa aplicado.</p>
+              <p className="text-sm font-semibold text-slate-400">Nenhum equipamento nesta categoria</p>
+              <p className="text-slate-500 text-xs mt-1">Nenhum registro coincide com o filtro de pesquisa aplicado nesta aba.</p>
             </div>
           ) : (
             <table className="w-full text-left border-collapse" id="table-printers">
@@ -483,14 +722,18 @@ export default function PrintersView({
                 <tr className="border-b border-slate-900 text-[10px] uppercase font-mono tracking-wider text-slate-500 font-bold bg-slate-950">
                   <th className="py-3 px-4">Impressora / Cadastro</th>
                   <th className="py-3 px-4">Endereço IP</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Tempo Resposta</th>
-                  <th className="py-3 px-4">Mensagem do Sensor</th>
+                  <th className="py-3 px-4">Status Geral</th>
+                  <th className="py-3 px-4">Status Impressora</th>
+                  <th className="py-3 px-4">Status Scanner</th>
+                  <th className="py-3 px-4">Status FAX</th>
+                  <th className="py-3 px-4">Status da Mensagem</th>
+                  <th className="py-3 px-4">Latência</th>
+                  <th className="py-3 px-4">Última Atualização</th>
                   <th className="py-3 px-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-900 text-xs text-slate-300">
-                {filteredPrinters.map((printer) => {
+                {listToRender.map((printer) => {
                   const isScanning = isScanningMap[printer.id] || false;
                   const printerSetor = printer.setor || printer.location || "Não especificado";
                   
@@ -523,56 +766,77 @@ export default function PrintersView({
                       {/* IP Address Cell */}
                       <td className="py-3.5 px-4 font-mono font-medium">
                         {printer.ip ? (
-                          <span className="text-slate-200">{printer.ip}</span>
+                          <div className="flex flex-col gap-1">
+                            <a
+                              href={`http://${printer.ip}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Acessar painel de gerenciamento web via IP"
+                              className="text-blue-400 hover:text-blue-350 hover:underline flex items-center gap-1 w-fit"
+                            >
+                              {printer.ip}
+                              <ExternalLink className="w-3 h-3 opacity-70" />
+                            </a>
+                            {printer.remoteUrl && (
+                              <span className="text-[9px] text-slate-500 truncate max-w-[140px] font-sans" title={printer.remoteUrl}>
+                                URL personalizada
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-slate-600 bg-slate-900/50 border border-dashed border-slate-800 px-2 py-0.5 rounded text-[10px]">SEM IP CONFIGURADO</span>
                         )}
                       </td>
 
-                      {/* Status Badges Cell (Glow customized matching requested enterprise state colors) */}
-                      <td className="py-3.5 px-4">
+                      {/* Status Badges Cell (Optimized online/offline split for clean Print Audit view) */}
+                      <td className="py-3.5 px-4 animate-fade-in">
                         <div className="flex flex-col gap-0.5">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border ${
-                            printer.status === "online" 
-                              ? "bg-green-500/10 text-green-400 border-green-500/20" 
-                              : printer.status === "sleep_mode" 
-                              ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
-                              : printer.status === "warning" 
-                              ? "bg-amber-500/10 text-amber-500 border-amber-500/20" 
-                              : (printer.status === "instável" || printer.status === "instavel")
-                              ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
-                              : printer.status === "error"
-                              ? "bg-red-500/10 text-red-400 border-red-500/20"
-                              : printer.status === "offline"
-                              ? "bg-red-500/10 text-red-400 border-red-500/20"
-                              : printer.status === "local_usb"
-                              ? "bg-slate-500/10 text-slate-400 border-slate-500/25"
-                              : "bg-slate-800/20 text-slate-450 border-slate-700/20"
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              printer.status === "online" 
-                                ? "bg-green-400 animate-pulse" 
-                                : printer.status === "sleep_mode" 
-                                ? "bg-blue-400" 
-                                : printer.status === "warning" || printer.status === "instável" || printer.status === "instavel"
-                                ? "bg-yellow-400" 
-                                : printer.status === "error" || printer.status === "offline"
-                                ? "bg-red-400"
-                                : "bg-slate-400"
-                            }`} />
-                            {printer.status === "sleep_mode" 
-                              ? "SLEEP / STANDBY" 
-                              : (printer.status === "instável" || printer.status === "instavel")
-                              ? "INSTÁVEL"
-                              : printer.status === "local_usb" || printer.status === "ip_invalido" || printer.status === "sem_ip"
-                              ? "Impressora local (sem rede)"
-                              : printer.status === "warning"
-                              ? "AVISO"
-                              : printer.status === "error"
-                              ? "ERRO"
-                              : printer.status.toUpperCase()}
-                          </span>
+                          {printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido" ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-slate-500/10 text-slate-400 border-slate-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                              INVENTARIADA
+                            </span>
+                          ) : printer.status === "online" ? (
+                            printer.currentMessage && printer.currentMessage.includes("🚨") ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-red-500/15 text-red-450 border-red-500/35">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                {printer.currentMessage.replace("🚨", "").trim().toUpperCase()}
+                              </span>
+                            ) : printer.currentMessage && printer.currentMessage.includes("⚠️") ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-amber-500/15 text-amber-450 border-amber-500/35">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                {printer.currentMessage.replace("⚠️", "").trim().toUpperCase()}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-green-500/10 text-green-400 border-green-500/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                                ONLINE
+                              </span>
+                            )
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-slate-950 text-slate-400 border-slate-800">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                              INATIVA
+                            </span>
+                          )}
                         </div>
+                      </td>
+
+                      {/* Command Center Status Columns */}
+                      <td className="py-3.5 px-4 animate-fade-in">
+                        {getCCStatusBadge(printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido" ? "Inativo" : (printer.statusImpressora || (printer.status === "offline" ? "Offline" : "Pronto")))}
+                      </td>
+
+                      <td className="py-3.5 px-4 animate-fade-in">
+                        {getCCStatusBadge(printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido" ? "Inativo" : (printer.statusScanner || (printer.status === "offline" ? "Offline" : "Pronto")))}
+                      </td>
+
+                      <td className="py-3.5 px-4 animate-fade-in">
+                        {getCCStatusBadge(printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido" ? "Inativo" : (printer.statusFax || (printer.status === "offline" ? "Offline" : "Pronto")))}
+                      </td>
+
+                      <td className="py-3.5 px-4 animate-fade-in max-w-[150px] overflow-hidden truncate">
+                        {getCCStatusBadge(printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido" ? "Inativo" : (printer.statusMensagem || (printer.status === "offline" ? "Offline" : "Pronto")))}
                       </td>
 
                       {/* Response Latency Cell */}
@@ -584,29 +848,12 @@ export default function PrintersView({
                         )}
                       </td>
 
-                      {/* Printer Discovered Alert Sensor message */}
+                      {/* Última Atualização Cell */}
                       <td className="py-3.5 px-4">
-                        <div className="space-y-0.5">
-                          {printer.currentMessage ? (
-                            <p 
-                              className={`text-[11px] font-medium max-w-xs break-words ${
-                                printer.status === "error" 
-                                  ? "text-red-400" 
-                                  : printer.status === "warning" || printer.status === "ip_invalido" || printer.status === "instável" || printer.status === "instavel"
-                                  ? "text-amber-400"
-                                  : printer.status === "sem_ip" || printer.status === "local_usb"
-                                  ? "text-slate-500 italic"
-                                  : "text-slate-350"
-                              }`}
-                            >
-                              {printer.currentMessage}
-                            </p>
-                          ) : (
-                            <p className="text-[10px] text-slate-500 italic">Dispositivo aguardando varredura...</p>
-                          )}
-                          
+                        <div className="flex flex-col gap-0.5">
+                          {formatLastChecked(printer.updatedAt || printer.lastChecked)}
                           {printer.lastChecked && (
-                            <p className="text-[9px] text-slate-600 font-mono">Verificado em: {new Date(printer.lastChecked).toLocaleString("pt-BR")}</p>
+                            <p className="text-[9px] text-slate-600 font-mono">Cad: {new Date(printer.createdAt || printer.lastChecked).toLocaleDateString("pt-BR")}</p>
                           )}
                         </div>
                       </td>
@@ -614,6 +861,17 @@ export default function PrintersView({
                       {/* Actions Trigger panel */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {printer.ip && (
+                            <a
+                              href={`http://${printer.ip}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Acesso Remoto via IP (WebUI)"
+                              className="p-1.5 rounded bg-slate-900 border border-slate-850 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30 transition cursor-pointer select-none flex items-center justify-center"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
                           <button
                             onClick={() => triggerSingleScan(printer)}
                             disabled={isScanning || printer.status === "sem_ip" || printer.status === "ip_invalido" || printer.status === "local_usb"}
@@ -746,17 +1004,106 @@ export default function PrintersView({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Endereço IP (Opcional - deixe em branco para SEM IP)</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: 10.69.32.18"
-                    value={ip}
-                    onChange={(e) => setIp(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none font-mono"
-                  />
-                  <p className="text-[9px] text-slate-500 font-sans mt-1">Dispositivos sem IP cadastrado serão assinalados com o status de rede "SEM IP" e não realizarão pings.</p>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Endereço IP (Opcional - deixe em branco para SEM IP)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 10.69.32.18"
+                      value={ip}
+                      onChange={(e) => setIp(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">URL de Acesso Remoto Personalizada (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: http://10.69.32.18:8080"
+                      value={remoteUrl}
+                      onChange={(e) => setRemoteUrl(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none font-mono"
+                    />
+                  </div>
                 </div>
+
+                {/* CONFIGURAÇÃO DE CREDENCIAIS DO COMMAND CENTER */}
+                <div className="p-4 rounded-xl border border-slate-900 bg-slate-900/40 space-y-3.5">
+                  <div className="flex items-center gap-2 border-b border-slate-900 pb-2">
+                    <Key className="w-4 h-4 text-yellow-500" />
+                    <h4 className="text-xs font-bold text-slate-200">Credenciais Command Center Rx *</h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Usuário Admin *</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: admin"
+                        value={adminUsername}
+                        onChange={(e) => setAdminUsername(e.target.value)}
+                        required
+                        className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Senha Admin *</label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Senha ou código admin"
+                          value={adminPassword}
+                          onChange={(e) => setAdminPassword(e.target.value)}
+                          required
+                          className="w-full pl-3 pr-9 py-1.5 rounded-lg bg-slate-950 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2.5 top-1.5 text-slate-500 hover:text-slate-300 select-none cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Test Connection Button & Indicator */}
+                  <div className="pt-1 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-500">Valide os acessos contra o IP fornecido</span>
+                      <button
+                        type="button"
+                        onClick={handleTestAccess}
+                        disabled={testStatus?.isLoading}
+                        className="px-2.5 py-1 bg-slate-900 border border-slate-850 hover:bg-slate-800 text-slate-200 text-[10px] rounded-lg tracking-wide font-mono transition cursor-pointer select-none flex items-center gap-1.5"
+                      >
+                        {testStatus?.isLoading ? "Testando..." : "Testar Acesso"}
+                      </button>
+                    </div>
+
+                    {testStatus && (
+                      <div className={`p-2.5 rounded-lg text-[11px] flex gap-2 border ${
+                        testStatus.isLoading 
+                          ? "bg-blue-950/20 border-blue-500/10 text-blue-400 font-mono"
+                          : testStatus.success
+                          ? "bg-emerald-950/25 border-emerald-500/20 text-emerald-400 font-semibold"
+                          : "bg-red-950/25 border-red-500/20 text-red-400"
+                      }`}>
+                        {testStatus.isLoading ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin mt-0.5" />
+                        ) : testStatus.success ? (
+                          <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400 mt-0.5" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
+                        )}
+                        <span>{testStatus.message}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-[9px] text-slate-500 font-sans mt-0.5">Dispositivos sem IP cadastrado serão assinalados com o status de rede "SEM IP". Por padrão, o acesso remoto abre o gerenciador Web no link http do IP.</p>
               </div>
 
               <div className="p-6 border-t border-slate-900 bg-slate-950 flex items-center justify-end gap-3">
@@ -875,14 +1222,102 @@ export default function PrintersView({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Endereço IP (Opcional - deixe em branco para desativar monitoramento)</label>
-                  <input
-                    type="text"
-                    value={ip}
-                    onChange={(e) => setIp(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none font-mono"
-                  />
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Endereço IP (Opcional - deixe em branco para desativar)</label>
+                    <input
+                      type="text"
+                      value={ip}
+                      onChange={(e) => setIp(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">URL de Acesso Remoto Personalizada (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: http://10.69.32.18:8080"
+                      value={remoteUrl}
+                      onChange={(e) => setRemoteUrl(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* CONFIGURAÇÃO DE CREDENCIAIS DO COMMAND CENTER */}
+                <div className="p-4 rounded-xl border border-slate-900 bg-slate-900/40 space-y-3.5">
+                  <div className="flex items-center gap-2 border-b border-slate-900 pb-2">
+                    <Key className="w-4 h-4 text-amber-500" />
+                    <h4 className="text-xs font-bold text-slate-200">Credenciais Command Center Rx *</h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Usuário Admin *</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: admin"
+                        value={adminUsername}
+                        onChange={(e) => setAdminUsername(e.target.value)}
+                        required
+                        className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Senha Admin *</label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Senha ou código admin"
+                          value={adminPassword}
+                          onChange={(e) => setAdminPassword(e.target.value)}
+                          required
+                          className="w-full pl-3 pr-9 py-1.5 rounded-lg bg-slate-950 border border-slate-850 text-slate-200 text-xs focus:ring-1 focus:ring-blue-500/50 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2.5 top-1.5 text-slate-500 hover:text-slate-300 select-none cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Test Connection Button & Indicator */}
+                  <div className="pt-1 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-500">Valide os acessos contra o IP editado</span>
+                      <button
+                        type="button"
+                        onClick={handleTestAccess}
+                        disabled={testStatus?.isLoading}
+                        className="px-2.5 py-1 bg-slate-900 border border-slate-850 hover:bg-slate-800 text-slate-200 text-[10px] rounded-lg tracking-wide font-mono transition cursor-pointer select-none flex items-center gap-1.5"
+                      >
+                        {testStatus?.isLoading ? "Testando..." : "Testar Acesso"}
+                      </button>
+                    </div>
+
+                    {testStatus && (
+                      <div className={`p-2.5 rounded-lg text-[11px] flex gap-2 border ${
+                        testStatus.isLoading 
+                          ? "bg-blue-950/20 border-blue-500/10 text-blue-400 font-mono"
+                          : testStatus.success
+                          ? "bg-emerald-950/25 border-emerald-500/20 text-emerald-400 font-semibold"
+                          : "bg-red-950/25 border-red-500/20 text-red-400"
+                      }`}>
+                        {testStatus.isLoading ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin mt-0.5" />
+                        ) : testStatus.success ? (
+                          <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400 mt-0.5" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
+                        )}
+                        <span>{testStatus.message}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1010,6 +1445,8 @@ export default function PrintersView({
                           <th className="p-2.5">S/N (Serial) *</th>
                           <th className="p-2.5">Tombo</th>
                           <th className="p-2.5">IP (Endereço)</th>
+                          <th className="p-2.5">Usuário Admin *</th>
+                          <th className="p-2.5">Senha Admin *</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-900 bg-slate-950 text-slate-300">
@@ -1107,13 +1544,35 @@ export default function PrintersView({
                                   value={row.ip}
                                   onChange={(e) => handleImportedFieldChange(i, "ip", e.target.value)}
                                   className={`w-full bg-transparent px-2 py-1 text-[11px] text-teal-400 hover:bg-slate-900 border border-transparent focus:border-slate-850 focus:bg-slate-900 outline-none rounded ${
-                                    row.ip && !isLocalIpToken(row.ip) && !validateIPAddress(row.ip)
+                                    row.ip && !validateIPAddress(row.ip)
                                       ? "border-red-500/50 bg-red-950/20 text-red-400 font-semibold"
                                       : !row.ip
                                       ? "text-slate-600 border-dashed border-slate-900 pr-1 py-1"
                                       : ""
                                   }`}
                                   placeholder="Vazio (Sem IP)"
+                                />
+                              </td>
+
+                              {/* Admin Username Edit */}
+                              <td className="p-1">
+                                <input
+                                  type="text"
+                                  value={row.adminUsername || "admin"}
+                                  onChange={(e) => handleImportedFieldChange(i, "adminUsername", e.target.value)}
+                                  className={`w-full bg-transparent px-2 py-1 text-[11px] hover:bg-slate-900 border border-transparent focus:border-slate-850 focus:bg-slate-900 outline-none rounded ${!(row.adminUsername || "admin") ? "border-dashed border-red-500/40 text-red-400 font-semibold" : ""}`}
+                                  placeholder="admin"
+                                />
+                              </td>
+
+                              {/* Admin Password Edit */}
+                              <td className="p-1">
+                                <input
+                                  type="text"
+                                  value={row.adminPassword || "admin"}
+                                  onChange={(e) => handleImportedFieldChange(i, "adminPassword", e.target.value)}
+                                  className={`w-full bg-transparent px-2 py-1 text-[11px] hover:bg-slate-900 border border-transparent focus:border-slate-850 focus:bg-slate-900 outline-none rounded ${!(row.adminPassword || "admin") ? "border-dashed border-red-500/40 text-red-400 font-semibold" : ""}`}
+                                  placeholder="admin"
                                 />
                               </td>
                             </tr>
@@ -1137,7 +1596,7 @@ export default function PrintersView({
                 </p>
                 <ul className="list-disc pl-5 leading-relaxed text-slate-400 space-y-1 text-[10.5px]">
                   <li>O arquivo deve conter as colunas de cabeçalho: <strong>Setor, Tipo, Marca, Modelo, Tombo, Número de Série</strong> e <strong>IP</strong>.</li>
-                  <li><strong>IP Opcional:</strong> Caso o IP venha vazio ou marcado como <strong>SEMREDE</strong>, <strong>USB</strong> ou <strong>LOCAL</strong>, o equipamento será classificado como <strong>LOCAL_USB</strong> e não será monitorado pela rede.</li>
+                  <li><strong>IP Opcional:</strong> Caso o IP venha vazio, ele será assinalado como <strong>SEM_IP</strong> no Firebase e não interferirá nos fluxos de rede da intranet.</li>
                   <li><strong>Correção de IP:</strong> IPs formatados inadequadamente com pontos duplicados (ex: <code>10.69..32.67</code>) serão automaticamente retificados para <code>10.69.32.67</code> pela rotina sanitária.</li>
                 </ul>
               </div>

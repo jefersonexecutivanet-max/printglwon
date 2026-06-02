@@ -63,6 +63,27 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email"]
+    },
+    "status_history": {
+      "title": "Status History Log",
+      "description": "Log of printer Command Center status changes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "printerId": { "type": "string" },
+        "printerName": { "type": "string" },
+        "ip": { "type": "string" },
+        "prevStatusImpressora": { "type": "string" },
+        "prevStatusScanner": { "type": "string" },
+        "prevStatusFax": { "type": "string" },
+        "prevStatusMensagem": { "type": "string" },
+        "nextStatusImpressora": { "type": "string" },
+        "nextStatusScanner": { "type": "string" },
+        "nextStatusFax": { "type": "string" },
+        "nextStatusMensagem": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["printerId", "timestamp"]
     }
   },
   "firestore": {
@@ -81,6 +102,10 @@
     "users": {
       "schema": "users",
       "description": "Admin user access data"
+    },
+    "status_history": {
+      "schema": "status_history",
+      "description": "Historical logs of printer status changes"
     }
   }
 }

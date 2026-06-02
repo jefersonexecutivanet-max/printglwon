@@ -11,6 +11,8 @@ export interface ImportedPrinter {
   rawIp?: string;
   validationStatus: "valid" | "corrected" | "invalid";
   errors: string[];
+  adminUsername?: string;
+  adminPassword?: string;
   
   // Backward compatibility fields
   name: string;
@@ -60,20 +62,33 @@ function splitCSVRow(line: string): string[] {
   return result;
 }
 
-export function validateIPAddress(ipStr: string): boolean {
-  if (!ipStr) return false;
-  const regex =
-    /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/;
-
-  return regex.test(ipStr.trim());
+export function cleanNetworkHost(input: string | undefined): string {
+  if (!input) return "";
+  let clean = input.trim();
+  if (clean.includes("://")) {
+    clean = clean.split("://")[1];
+  }
+  clean = clean.split("/")[0];
+  clean = clean.split(":")[0];
+  return clean.trim();
 }
 
-export function isLocalUsbIp(ip?: string): boolean {
-  const clean = String(ip || "").trim().toUpperCase();
-  if (clean === "" || clean === "SEMREDE" || clean === "USB" || clean === "LOCAL") {
-    return true;
+export function validateIPAddress(ipStr: string): boolean {
+  if (!ipStr) return false;
+  const clean = cleanNetworkHost(ipStr);
+  if (!clean) return false;
+  
+  const cleanLower = clean.toLowerCase();
+  if (cleanLower === "" || cleanLower === "0.0.0.0" || cleanLower === "semrede" || cleanLower === "usb" || cleanLower === "local" || cleanLower === "sem_rede") {
+    return false;
   }
-  return !validateIPAddress(clean);
+
+  const regex =
+    /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/;
+  if (regex.test(clean)) return true;
+
+  const hostRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+  return hostRegex.test(clean);
 }
 
 export function buildPrinterFromRow(row: { [key: string]: string }): ImportedPrinter {
@@ -85,6 +100,8 @@ export function buildPrinterFromRow(row: { [key: string]: string }): ImportedPri
   let serial = "";
   let ip = "";
   let rawIp = "";
+  let adminUsername = "admin";
+  let adminPassword = "admin";
 
   Object.keys(row).forEach((key) => {
     const cleanKey = key.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
@@ -105,6 +122,10 @@ export function buildPrinterFromRow(row: { [key: string]: string }): ImportedPri
     } else if (cleanKey === "ip" || cleanKey === "endereco" || cleanKey === "enderecoip") {
       ip = val;
       rawIp = val;
+    } else if (cleanKey === "usuarioadmin" || cleanKey === "adminusername" || cleanKey === "usuariocommandcenter" || cleanKey === "usuario" || cleanKey === "user") {
+      if (val) adminUsername = val;
+    } else if (cleanKey === "senhaadmin" || cleanKey === "adminpassword" || cleanKey === "senhacommandcenter" || cleanKey === "senha" || cleanKey === "password") {
+      if (val) adminPassword = val;
     }
   });
 
@@ -117,9 +138,13 @@ export function buildPrinterFromRow(row: { [key: string]: string }): ImportedPri
   if (!modelo) errors.push("Modelo é obrigatório.");
   if (!serial) errors.push("Número de Série é obrigatório.");
 
-  // Intelligent IP validation and local inventory detection
+  // Intelligent IP validation and correction
   let finalIp = ip.trim().replace(/\s+/g, "");
-  const isLocal = isLocalUsbIp(finalIp);
+  if (finalIp === "0.0.0.0") {
+    finalIp = "";
+  }
+  const ipUpper = finalIp.toUpperCase();
+  const isLocal = !finalIp || ipUpper === "" || ipUpper === "SEMREDE" || ipUpper === "USB" || ipUpper === "LOCAL" || !validateIPAddress(finalIp);
 
   if (isLocal) {
     tipo = "LOCAL_USB";
@@ -133,8 +158,8 @@ export function buildPrinterFromRow(row: { [key: string]: string }): ImportedPri
     }
 
     if (!validateIPAddress(finalIp)) {
-      tipo = "LOCAL_USB";
-      validationStatus = "valid";
+      validationStatus = "invalid";
+      errors.push(`Endereço IP inválido: "${ip}"`);
     } else if (hasDoubleDots) {
       validationStatus = "corrected";
     }
@@ -159,6 +184,8 @@ export function buildPrinterFromRow(row: { [key: string]: string }): ImportedPri
     rawIp,
     validationStatus,
     errors,
+    adminUsername,
+    adminPassword,
 
     // Compat:
     name: friendlyName,
