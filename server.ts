@@ -410,6 +410,9 @@ async function startServer() {
     if (lower.includes("aquecendo") || lower.includes("warming up") || lower.includes("warmup") || lower.includes("aquecimento")) {
       return { classification: "normal", label: "Aquecendo" };
     }
+    if (lower.includes("imprimindo") || lower.includes("printing") || lower.includes("impressao") || lower.includes("impressão") || lower.includes("imprime") || lower.includes("job")) {
+      return { classification: "normal", label: "Imprimindo" };
+    }
 
     return { classification: "normal", label: "Pronto" };
   };
@@ -887,11 +890,13 @@ async function startServer() {
     } else if (chosen.severity === "warning") {
       status = "warning";
       currentMessage = `⚠️ ${chosen.message}`;
+    } else if (status !== "offline" && chosen.message && chosen.message !== "Pronto") {
+      currentMessage = chosen.message;
     } else if (status !== "offline") {
       currentMessage = "✅ Operacional";
     }
 
-    if (chosen.severity !== "none") {
+    if (chosen.severity !== "none" || (chosen.message && chosen.message !== "Pronto")) {
       ccStatuses.statusMensagem = chosen.message;
     }
 

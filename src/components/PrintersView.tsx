@@ -46,7 +46,7 @@ const getCCStatusBadge = (statusVal?: string) => {
     colorClass = "bg-green-500/10 text-green-400 border-green-500/20";
   } else if (["espera", "sleep", "economia", "eco", "poupar"].some(x => cleanLower.includes(x))) {
     colorClass = "bg-slate-850 text-slate-300 border-slate-800";
-  } else if (["aquecendo", "processando"].some(x => cleanLower.includes(x))) {
+  } else if (["aquecendo", "processando", "imprimindo", "printing", "impressao"].some(x => cleanLower.includes(x))) {
     colorClass = "bg-blue-500/10 text-blue-400 border-blue-500/20";
   } else if (["baixo", "prox", "fim", "proxima", "manutencao"].some(x => cleanLower.includes(x))) {
     colorClass = "bg-amber-500/10 text-amber-500 border-amber-500/20";
@@ -75,6 +75,87 @@ const formatLastChecked = (timeStr?: string | null) => {
   } catch {
     return <span className="text-slate-400">{timeStr}</span>;
   }
+};
+
+const getPrinterStatusIndicator = (currentMessage?: string, status?: string) => {
+  const raw = currentMessage?.trim() || "";
+  const message = raw.replace(/^[🚨⚠️\s]+/, "").trim();
+  const lower = message.toLowerCase();
+
+  if (raw.includes("🚨")) {
+    return {
+      label: message.toUpperCase() || "ERRO",
+      className: "border bg-red-500/15 text-red-450 border-red-500/35",
+      dotClass: "bg-red-500"
+    };
+  }
+
+  if (raw.includes("⚠️")) {
+    return {
+      label: message.toUpperCase() || "ATENÇÃO",
+      className: "border bg-amber-500/15 text-amber-450 border-amber-500/35",
+      dotClass: "bg-amber-500"
+    };
+  }
+
+  if (raw === "✅ Operacional") {
+    return {
+      label: status === "error" ? "ERRO" : status === "warning" ? "ATENÇÃO" : "ONLINE",
+      className: "border bg-green-500/10 text-green-400 border-green-500/20",
+      dotClass: "bg-green-400"
+    };
+  }
+
+  if (!message || raw === "🔴 Offline") {
+    return {
+      label: status === "offline" ? "INATIVO" : status === "warning" ? "ATENÇÃO" : status === "error" ? "ERRO" : "ONLINE",
+      className: "border bg-slate-950 text-slate-400 border-slate-800",
+      dotClass: "bg-slate-500"
+    };
+  }
+
+  const isError = ["erro", "falha", "preso", "atolado", "aberta", "aberto", "sem papel", "vazio", "vazia", "carregar papel"].some((x) => lower.includes(x));
+  const isWarning = ["atencao", "atenção", "toner", "kit", "manutencao", "manutenção", "unidade", "drum", "tambor"].some((x) => lower.includes(x));
+  const isProcessing = ["imprimindo", "printing", "processando", "aquecendo", "impressão", "impressao"].some((x) => lower.includes(x));
+  const isWaiting = ["espera", "sleep", "economia", "eco", "poupar"].some((x) => lower.includes(x));
+
+  if (isError) {
+    return {
+      label: message.toUpperCase(),
+      className: "border bg-red-500/15 text-red-450 border-red-500/35",
+      dotClass: "bg-red-500"
+    };
+  }
+
+  if (isWarning) {
+    return {
+      label: message.toUpperCase(),
+      className: "border bg-amber-500/15 text-amber-450 border-amber-500/35",
+      dotClass: "bg-amber-500"
+    };
+  }
+
+  if (isProcessing) {
+    return {
+      label: message.toUpperCase(),
+      className: "border bg-blue-500/10 text-blue-400 border-blue-500/20",
+      dotClass: "bg-blue-400"
+    };
+  }
+
+  if (isWaiting) {
+    return {
+      label: message.toUpperCase(),
+      className: "border bg-slate-850 text-slate-300 border-slate-800",
+      dotClass: "bg-slate-500"
+    };
+  }
+
+  return {
+    label: message.toUpperCase(),
+    className: "border bg-green-500/10 text-green-400 border-green-500/20",
+    dotClass: "bg-green-400"
+  };
 };
 
 export default function PrintersView({
@@ -797,22 +878,15 @@ export default function PrintersView({
                               INVENTARIADA
                             </span>
                           ) : printer.status === "online" || printer.status === "warning" || printer.status === "error" ? (
-                            printer.currentMessage && printer.currentMessage.includes("🚨") ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-red-500/15 text-red-450 border-red-500/35">
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                                {printer.currentMessage.replace("🚨", "").trim().toUpperCase()}
-                              </span>
-                            ) : printer.currentMessage && printer.currentMessage.includes("⚠️") ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-amber-500/15 text-amber-450 border-amber-500/35">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                {printer.currentMessage.replace("⚠️", "").trim().toUpperCase()}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-green-500/10 text-green-400 border-green-500/20">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                                {printer.status === "error" ? "ERRO" : printer.status === "warning" ? "ATENÇÃO" : "ONLINE"}
-                              </span>
-                            )
+                            (() => {
+                              const indicator = getPrinterStatusIndicator(printer.currentMessage, printer.status);
+                              return (
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit ${indicator.className}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${indicator.dotClass} animate-pulse`} />
+                                  {indicator.label}
+                                </span>
+                              );
+                            })()
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-slate-950 text-slate-400 border-slate-800">
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />

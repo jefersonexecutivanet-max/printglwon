@@ -87,7 +87,7 @@ export default function DashboardView({
       const sImp = (p.statusImpressora || "Pronto").toLowerCase();
       if (sImp.includes("pronto")) stats.impressora.pronto++;
       else if (sImp.includes("espera") || sImp.includes("sleep")) stats.impressora.espera++;
-      else if (sImp.includes("processando")) stats.impressora.processando++;
+      else if (["processando", "imprimindo", "impressao", "printing"].some((token) => sImp.includes(token))) stats.impressora.processando++;
       else if (sImp.includes("aquecendo")) stats.impressora.aquecendo++;
       else if (sImp.includes("economia") || sImp.includes("poupar")) stats.impressora.economia++;
       else stats.impressora.alerta++;
@@ -109,7 +109,7 @@ export default function DashboardView({
       // 4. Mensagem
       const sMsg = (p.statusMensagem || "Pronto").toLowerCase();
       if (sMsg.includes("pronto")) stats.mensagem.pronto++;
-      else if (sMsg.includes("espera") || sMsg.includes("sleep") || sMsg.includes("economia")) stats.mensagem.espera++;
+      else if (sMsg.includes("espera") || sMsg.includes("sleep") || sMsg.includes("economia") || ["processando", "imprimindo", "impressao", "printing"].some((token) => sMsg.includes(token))) stats.mensagem.espera++;
       else if (["erro", "falha", "preso", "atolado", "aberta", "aberto", "sem papel", "vazio", "vazia", "unidade", "imagem", "baixo"].some(x => sMsg.includes(x))) stats.mensagem.alerta++;
       else stats.mensagem.erro++;
     });
