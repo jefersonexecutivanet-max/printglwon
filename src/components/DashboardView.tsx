@@ -119,22 +119,24 @@ export default function DashboardView({
 
   const ccStats = compileCCStats();
 
-  const onlinePrinters = printers.filter((p) => p.status === "online").length;
+  const onlinePrinters = printers.filter((p) => p.status === "online" || p.status === "warning" || p.status === "error").length;
   const offlinePrinters = printers.filter((p) => p.status === "offline").length;
 
-  // Calculo de alertas físicos reais do sensor das impressoras online
+  // Calculo de alertas físicos reais do sensor e do Command Center para impressoras conectadas
   const errosOperacionaisCount = printers.filter(
-    (p) => p.status === "online" && p.currentMessage && p.currentMessage.includes("🚨")
+    (p) => p.status !== "offline" && p.currentMessage && p.currentMessage.includes("🚨")
   ).length;
 
   const avisosOperacionaisCount = printers.filter(
-    (p) => p.status === "online" && p.currentMessage && p.currentMessage.includes("⚠️")
+    (p) => p.status !== "offline" && p.currentMessage && p.currentMessage.includes("⚠️")
   ).length;
 
   const totalSensorAlerts = errosOperacionaisCount + avisosOperacionaisCount;
 
   // Active status rate of network printers
-  const totalPrintersEmRede = printers.filter((p) => p.status === "online" || p.status === "offline").length;
+  const totalPrintersEmRede = printers.filter(
+    (p) => p.status === "online" || p.status === "offline" || p.status === "warning" || p.status === "error"
+  ).length;
   const onlinePercentage = totalPrintersEmRede > 0 ? Math.round((onlinePrinters / totalPrintersEmRede) * 100) : 0;
 
   // Average response time of active printers (only those with IP and online and responsive)

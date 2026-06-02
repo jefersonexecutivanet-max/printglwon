@@ -796,7 +796,7 @@ export default function PrintersView({
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
                               INVENTARIADA
                             </span>
-                          ) : printer.status === "online" ? (
+                          ) : printer.status === "online" || printer.status === "warning" || printer.status === "error" ? (
                             printer.currentMessage && printer.currentMessage.includes("🚨") ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-red-500/15 text-red-450 border-red-500/35">
                                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -810,7 +810,7 @@ export default function PrintersView({
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-green-500/10 text-green-400 border-green-500/20">
                                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                                ONLINE
+                                {printer.status === "error" ? "ERRO" : printer.status === "warning" ? "ATENÇÃO" : "ONLINE"}
                               </span>
                             )
                           ) : (
