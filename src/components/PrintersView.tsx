@@ -871,7 +871,7 @@ export default function PrintersView({
 
                       {/* Status Badges Cell (Optimized online/offline split for clean Print Audit view) */}
                       <td className="py-3.5 px-4 animate-fade-in">
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex flex-col gap-1">
                           {printer.status === "local_usb" || printer.status === "sem_ip" || printer.status === "ip_invalido" ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-slate-500/10 text-slate-400 border-slate-500/20">
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
@@ -891,6 +891,12 @@ export default function PrintersView({
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold text-[9.5px] uppercase tracking-wider w-fit border bg-slate-950 text-slate-400 border-slate-800">
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
                               INATIVA
+                            </span>
+                          )}
+
+                          {printer.currentMessage && printer.currentMessage !== "✅ Operacional" && printer.currentMessage !== "🔴 Offline" && (
+                            <span className="text-[10px] text-slate-400 leading-tight max-w-[200px] truncate">
+                              {printer.currentMessage.replace(/^[🚨⚠️]\s*/, "")}
                             </span>
                           )}
                         </div>
